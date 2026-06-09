@@ -24,7 +24,7 @@ FEATURES_REGRESOR = [
     'interaccion_cap_hora', 'historico_estacion_hora_dia', 'desviacion_de_media_30m', 'momentum_quiebre_30m'
 ]
 
-ML_DIR = os.path.dirname(os.path.abspath(__file__))
+ML_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ml')
 
 
 def cargar_modelos():
