@@ -21,7 +21,7 @@ FEATURES_REGRESOR = [
 ]
 
 # Ruta base donde viven los archivos del modelo
-ML_DIR = os.path.dirname(os.path.abspath(__file__))
+ML_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ml')
 
 # 1. CARGA DE MODELOS PRE-ENTRENADOS (SE CARGAN UNA SOLA VEZ)
 def cargar_modelos():
