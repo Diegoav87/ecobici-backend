@@ -19,9 +19,9 @@ def get_modelos():
 
 
 def correr_prediccion_y_guardar(session: Session) -> Prediccion:
-    model_regresor, model_clasificador, mapa_historico, encoding_map, coords_base = get_modelos()
+    model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base = get_modelos()
 
-    payload = ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, encoding_map, coords_base)
+    payload = ejecutar_prediccion(model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base)
 
     metricas = payload["metricas_globales"]
     perf = metricas["model_performance"]
