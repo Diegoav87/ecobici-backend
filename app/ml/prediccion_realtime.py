@@ -13,17 +13,20 @@ URL_STATION_INFO = "https://gbfs.mex.lyftbikes.com/gbfs/es/station_information.j
 URL_STATION_STATUS = "https://gbfs.mex.lyftbikes.com/gbfs/es/station_status.json"
 
 DISTANCIA_LIMITE_GRADOS = 0.009
+
+# Debe coincidir exactamente con FEATURES_REGRESOR de entrenar_ML.py
 FEATURES_REGRESOR = [
     'capacity', 'bikes_avail', 'pct_full', 'hora_sin', 'hora_cos', 'dia_semana',
-    'es_fin_de_semana', 'hora_tipo_dia', 'pct_full_log1', 'pct_full_log2', 'pct_full_log3',
-    'pct_full_log_1h', 'pct_full_log_2h', 'rango_historico_estacion', 'velocidad_cambio',
-    'aceleracion_cambio', 'tendencia_1h', 'aceleracion_tendencia_1h', 'ocupacion_historica_estacion_hora', 'zona_logistica'
+    'es_fin_de_semana', 'hora_tipo_dia', 'es_pico_semana', 'pct_full_log1', 'pct_full_log2', 'pct_full_log3',
+    'pct_full_log_1h', 'rango_historico_estacion', 'velocidad_cambio',
+    'aceleracion_cambio', 'tendencia_1h', 'ocupacion_historica_estacion_hora',
+    'slots_vacios', 'zona_logistica', 'rolling_mean_30m', 'rolling_std_30m', 'rolling_mean_1h',
+    'interaccion_cap_hora', 'historico_estacion_hora_dia', 'desviacion_de_media_30m', 'momentum_quiebre_30m'
 ]
 
-# Ruta base donde viven los archivos del modelo
 ML_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 1. CARGA DE MODELOS PRE-ENTRENADOS (SE CARGAN UNA SOLA VEZ)
+
 def cargar_modelos():
     try:
         print("[+] Cargando modelos...")
@@ -33,16 +36,17 @@ def cargar_modelos():
         model_clasificador = xgb.XGBClassifier()
         model_clasificador.load_model(os.path.join(ML_DIR, "clasificador_ecobici.json"))
 
+        mapa_tri_interaccion = pd.read_csv(os.path.join(ML_DIR, "mapa_tri_interaccion.csv"))
         mapa_historico = pd.read_csv(os.path.join(ML_DIR, "mapa_historico.csv"))
         encoding_map = pd.read_csv(os.path.join(ML_DIR, "encoding_map.csv"))
         coords_base = pd.read_csv(os.path.join(ML_DIR, "coords_base.csv"))
         print("[+] Modelos cargados exitosamente.")
-        return model_regresor, model_clasificador, mapa_historico, encoding_map, coords_base
+        return model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base
     except Exception as e:
         raise RuntimeError(f"Error crítico al cargar archivos del modelo: {e}")
 
 
-def ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, encoding_map, coords_base) -> dict:
+def ejecutar_prediccion(model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base) -> dict:
     # 2. CONSUMO EN TIEMPO REAL DESDE LAS URLs PÚBLICAS GBFS
     res_info = requests.get(URL_STATION_INFO, timeout=15).json()
     res_disp = requests.get(URL_STATION_STATUS, timeout=15).json()
@@ -63,9 +67,10 @@ def ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, enco
 
     df_realtime = pd.merge(df_disp_api, df_info_api, on='station_id', how='inner')
     df_realtime['pct_full'] = df_realtime['bikes_avail'] / df_realtime['capacity'].replace({0: 1})
+    df_realtime['slots_vacios'] = df_realtime['capacity'] - df_realtime['bikes_avail']
     df_realtime = df_realtime[(df_realtime['is_renting'] == 1) & (df_realtime['is_returning'] == 1)].reset_index(drop=True)
 
-    # 3. SINCRONIZACIÓN DE VARIABLES TEMPORALES Y MAPAS ESPACIALES
+    # 3. VARIABLES TEMPORALES
     ts_reciente = pd.Timestamp.now()
     df_realtime['hora'] = ts_reciente.hour
     df_realtime['dia_semana'] = ts_reciente.dayofweek
@@ -73,39 +78,52 @@ def ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, enco
     df_realtime['hora_sin'] = np.sin(2 * np.pi * df_realtime['hora'] / 24.0)
     df_realtime['hora_cos'] = np.cos(2 * np.pi * df_realtime['hora'] / 24.0)
     df_realtime['hora_tipo_dia'] = df_realtime['hora'] + (df_realtime['es_fin_de_semana'] * 24)
+    df_realtime['es_pico_semana'] = df_realtime['dia_semana'].apply(lambda x: 1 if x in [1, 2, 3] else 0)
+    df_realtime['interaccion_cap_hora'] = df_realtime['capacity'] * df_realtime['hora_cos']
 
+    # Mapas históricos
+    df_realtime = df_realtime.merge(mapa_tri_interaccion, on=['station_id', 'hora', 'dia_semana'], how='left')
     df_realtime = df_realtime.merge(mapa_historico, on=['station_id', 'hora'], how='left')
     df_realtime = df_realtime.merge(encoding_map, on=['station_id', 'hora_tipo_dia'], how='left')
     df_realtime = df_realtime.merge(coords_base, on=['lat', 'lon'], how='left')
 
-    df_realtime['pct_full_log1'] = df_realtime['pct_full']
-    df_realtime['pct_full_log2'] = df_realtime['pct_full']
-    df_realtime['pct_full_log3'] = df_realtime['pct_full']
-    df_realtime['pct_full_log_1h'] = df_realtime['pct_full']
-    df_realtime['pct_full_log_2h'] = df_realtime['pct_full']
+    # Lags y rolling: sin buffer histórico, se usa pct_full actual como mejor aproximación
+    pct = df_realtime['pct_full']
+    df_realtime['pct_full_log1'] = pct
+    df_realtime['pct_full_log2'] = pct
+    df_realtime['pct_full_log3'] = pct
+    df_realtime['pct_full_log_1h'] = pct
+    df_realtime['rolling_mean_30m'] = pct
+    df_realtime['rolling_std_30m'] = 0.0
+    df_realtime['rolling_mean_1h'] = pct
     df_realtime['velocidad_cambio'] = 0.0
     df_realtime['aceleracion_cambio'] = 0.0
     df_realtime['tendencia_1h'] = 0.0
-    df_realtime['aceleracion_tendencia_1h'] = 0.0
-    df_realtime = df_realtime.fillna(0)
+    df_realtime['desviacion_de_media_30m'] = 0.0
+    df_realtime['momentum_quiebre_30m'] = 0.0
 
-    # 4. SISTEMA HÍBRIDO E INVENTARIOS NETOS
-    df_realtime['pred_num_regresor'] = model_regresor.predict(df_realtime[FEATURES_REGRESOR])
+    df_realtime[FEATURES_REGRESOR] = df_realtime[FEATURES_REGRESOR].fillna(0)
+
+    # 4. INFERENCIA HÍBRIDA
+    df_realtime['pred_num_regresor'] = np.clip(
+        np.round(model_regresor.predict(df_realtime[FEATURES_REGRESOR])),
+        0, df_realtime['capacity']
+    )
     features_clasificador = FEATURES_REGRESOR + ['pred_num_regresor']
     df_realtime['estado_predicho'] = model_clasificador.predict(df_realtime[features_clasificador])
-    df_realtime['bicis_predichas_2h'] = np.round(df_realtime['pred_num_regresor'])
+    df_realtime['bicis_predichas_45m'] = df_realtime['pred_num_regresor']
     df_realtime['inventario_optimo'] = np.round(df_realtime['capacity'] * 0.425)
 
     def calcular_unidades_netas(row):
         if row['estado_predicho'] == 0:
-            return int(max(1, row['inventario_optimo'] - row['bicis_predichas_2h']))
+            return int(max(1, row['inventario_optimo'] - row['bicis_predichas_45m']))
         elif row['estado_predicho'] == 3:
-            return int(-max(1, row['bicis_predichas_2h'] - row['inventario_optimo']))
+            return int(-max(1, row['bicis_predichas_45m'] - row['inventario_optimo']))
         return 0
 
     df_realtime['unidades_requeridas'] = df_realtime.apply(calcular_unidades_netas, axis=1)
 
-    # 5. ALGORITMO DE RUTEO GEOGRÁFICO
+    # 5. ALGORITMO DE RUTEO
     def calcular_distancia_directa(lat1, lon1, lat2, lon2):
         return abs(lat1 - lat2) + abs(lon1 - lon2)
 
@@ -156,20 +174,24 @@ def ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, enco
         for d in demanda_list:
             if d['necesitadas'] > 0:
                 rutas_generadas.append({
-                    'Zona Logística': int(zona), 'Estación Origen (VACIAR)': "Almacén Central", 'Estación Destino (LLENAR)': int(d['station_id']),
-                    'Bicicletas a Mover': int(d['necesitadas']), 'Distancia (Km)': None, 'Vehículo Asignado': asignar_vehiculo(d['necesitadas'])
+                    'Zona Logística': int(zona), 'Estación Origen (VACIAR)': "Almacén Central",
+                    'Estación Destino (LLENAR)': int(d['station_id']),
+                    'Bicicletas a Mover': int(d['necesitadas']), 'Distancia (Km)': None,
+                    'Vehículo Asignado': asignar_vehiculo(d['necesitadas'])
                 })
 
         for o in oferta_list:
             if o['disponibles'] > 0:
                 rutas_generadas.append({
-                    'Zona Logística': int(zona), 'Estación Origen (VACIAR)': int(o['station_id']), 'Estación Destino (LLENAR)': "Almacén Central",
-                    'Bicicletas a Mover': int(o['disponibles']), 'Distancia (Km)': None, 'Vehículo Asignado': asignar_vehiculo(o['disponibles'])
+                    'Zona Logística': int(zona), 'Estación Origen (VACIAR)': int(o['station_id']),
+                    'Estación Destino (LLENAR)': "Almacén Central",
+                    'Bicicletas a Mover': int(o['disponibles']), 'Distancia (Km)': None,
+                    'Vehículo Asignado': asignar_vehiculo(o['disponibles'])
                 })
 
     df_rutas = pd.DataFrame(rutas_generadas)
 
-    # 6. CONSOLIDACIÓN DE MÉTRICAS Y PAYLOAD
+    # 6. MÉTRICAS Y PAYLOAD
     df_criticas = df_realtime[df_realtime['estado_predicho'].isin([0, 3])].copy()
     total_compensado, total_necesitado = 0, 0
     for zona, grupo in df_criticas.groupby('zona_logistica'):
@@ -192,8 +214,9 @@ def ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, enco
     rutas_list = []
     if not df_rutas.empty:
         df_api = df_rutas.rename(columns={
-            'Zona Logística': 'zonaLogistica', 'Estación Origen (VACIAR)': 'estacionOrigen', 'Estación Destino (LLENAR)': 'estacionDestino',
-            'Bicicletas a Mover': 'bicicletasAMover', 'Distancia (Km)': 'distanciaKm', 'Vehículo Asignado': 'vehiculoAsignado'
+            'Zona Logística': 'zonaLogistica', 'Estación Origen (VACIAR)': 'estacionOrigen',
+            'Estación Destino (LLENAR)': 'estacionDestino', 'Bicicletas a Mover': 'bicicletasAMover',
+            'Distancia (Km)': 'distanciaKm', 'Vehículo Asignado': 'vehiculoAsignado'
         })
         df_api['distanciaKm'] = df_api['distanciaKm'].replace({np.nan: None})
         rutas_list = df_api.to_dict(orient='records')
@@ -207,11 +230,11 @@ def ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, enco
 
 
 if __name__ == "__main__":
-    model_regresor, model_clasificador, mapa_historico, encoding_map, coords_base = cargar_modelos()
+    model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base = cargar_modelos()
     print("\n[+] Servidor de monitoreo iniciado. Ciclos cada 60 segundos. Ctrl+C para detener.\n")
     while True:
         try:
-            payload = ejecutar_prediccion(model_regresor, model_clasificador, mapa_historico, encoding_map, coords_base)
+            payload = ejecutar_prediccion(model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base)
             print(json.dumps(payload, indent=4, ensure_ascii=False))
             print(f"\n[+] Ciclo completado. Esperando 60 segundos...\n")
         except Exception as e:
