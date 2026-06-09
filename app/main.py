@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.database import init_db
-from app.routers import auth
+from app.routers import auth, predicciones, rutas, admin
 
 app = FastAPI(title="Ecobici API")
 
@@ -11,6 +11,9 @@ def on_startup():
 
 
 app.include_router(auth.router)
+app.include_router(predicciones.router)
+app.include_router(rutas.router)
+app.include_router(admin.router)
 
 
 @app.get("/")
