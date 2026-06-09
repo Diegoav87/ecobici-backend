@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from pydantic import BaseModel
 from typing import List, Optional
@@ -43,6 +43,7 @@ class PrediccionResponse(BaseModel):
 
 @router.post("/ejecutar", response_model=PrediccionResponse)
 def ejecutar(
+    request: Request,
     session: Session = Depends(get_session),
     current_user=Depends(require_rol(Rol.admin, Rol.operador)),
 ):
@@ -50,6 +51,15 @@ def ejecutar(
         prediccion = correr_prediccion_y_guardar(session)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al ejecutar el modelo: {e}")
+
+    log = AuditLog(
+        usuario_id=current_user.id,
+        accion="EJECUTAR_PREDICCION",
+        detalle=f"prediccion_id={prediccion.id}",
+        ip_address=request.client.host,
+    )
+    session.add(log)
+    session.commit()
 
     return _build_response(prediccion, session)
 

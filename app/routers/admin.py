@@ -55,6 +55,7 @@ def listar_usuarios(
 @router.post("/usuarios", response_model=UsuarioResponse, status_code=201)
 def crear_usuario(
     data: CrearUsuarioInput,
+    request: Request,
     session: Session = Depends(get_session),
     current_user=Depends(require_rol(Rol.admin)),
 ):
@@ -71,6 +72,16 @@ def crear_usuario(
     session.add(usuario)
     session.commit()
     session.refresh(usuario)
+
+    log = AuditLog(
+        usuario_id=current_user.id,
+        accion="CREAR_USUARIO",
+        detalle=f"email={data.email}, rol={data.rol}",
+        ip_address=request.client.host,
+    )
+    session.add(log)
+    session.commit()
+
     return usuario
 
 
@@ -78,6 +89,7 @@ def crear_usuario(
 def editar_usuario(
     usuario_id: int,
     data: EditarUsuarioInput,
+    request: Request,
     session: Session = Depends(get_session),
     current_user=Depends(require_rol(Rol.admin)),
 ):
@@ -85,16 +97,30 @@ def editar_usuario(
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
+    cambios = []
     if data.nombre is not None:
         usuario.nombre = data.nombre
+        cambios.append(f"nombre={data.nombre}")
     if data.rol is not None:
         usuario.rol = data.rol
+        cambios.append(f"rol={data.rol}")
     if data.activo is not None:
         usuario.activo = data.activo
+        cambios.append(f"activo={data.activo}")
 
     session.add(usuario)
     session.commit()
     session.refresh(usuario)
+
+    log = AuditLog(
+        usuario_id=current_user.id,
+        accion="EDITAR_USUARIO",
+        detalle=f"usuario_id={usuario_id}, cambios: {', '.join(cambios)}",
+        ip_address=request.client.host,
+    )
+    session.add(log)
+    session.commit()
+
     return usuario
 
 
