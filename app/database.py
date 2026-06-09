@@ -1,6 +1,7 @@
 from sqlmodel import SQLModel, create_engine, Session
 from dotenv import load_dotenv
 import os
+import app.models  # noqa: F401 — registra los modelos antes de crear tablas
 
 load_dotenv()
 
