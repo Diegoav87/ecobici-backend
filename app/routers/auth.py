@@ -15,7 +15,6 @@ class RegisterInput(BaseModel):
     nombre: str
     email: EmailStr
     password: str
-    rol: Rol = Rol.viewer
 
 
 class TokenResponse(BaseModel):
@@ -41,7 +40,7 @@ def register(data: RegisterInput, session: Session = Depends(get_session)):
         nombre=data.nombre,
         email=data.email,
         password_hash=hash_password(data.password),
-        rol=data.rol,
+        rol= Rol.viewer 
     )
     session.add(usuario)
     session.commit()
