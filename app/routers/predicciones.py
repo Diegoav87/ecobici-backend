@@ -31,8 +31,6 @@ class RutaResponse(BaseModel):
 class PrediccionResponse(BaseModel):
     id: int
     timestamp_evaluacion: datetime
-    accuracy_semaforo_pct: float
-    mae_volumen_bicicletas: float
     movimientos_mitigados_unidades: int
     eficiencia_rebalanceo_local_pct: float
     distancia_total_optimizada_local_km: float
@@ -44,8 +42,6 @@ class PrediccionResponse(BaseModel):
 class PrediccionResumenResponse(BaseModel):
     id: int
     timestamp_evaluacion: datetime
-    accuracy_semaforo_pct: float
-    mae_volumen_bicicletas: float
     movimientos_mitigados_unidades: int
     eficiencia_rebalanceo_local_pct: float
     distancia_total_optimizada_local_km: float

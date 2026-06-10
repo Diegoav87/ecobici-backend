@@ -22,13 +22,10 @@ def correr_prediccion_y_guardar(session: Session) -> Prediccion:
         raise RuntimeError(f"No se pudo contactar el servicio ML: {e}")
 
     metricas = payload["metricas_globales"]
-    perf = metricas["model_performance"]
     logistics = metricas["green_logistics"]
 
     prediccion = Prediccion(
         timestamp_evaluacion=datetime.fromisoformat(payload["timestamp_evaluacion"]),
-        accuracy_semaforo_pct=perf["accuracy_semaforo_pct"],
-        mae_volumen_bicicletas=perf["mae_volumen_bicicletas"],
         movimientos_mitigados_unidades=logistics["movimientos_mitigados_unidades"],
         eficiencia_rebalanceo_local_pct=logistics["eficiencia_rebalanceo_local_pct"],
         distancia_total_optimizada_local_km=logistics["distancia_total_optimizada_local_km"],

@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-INTERVALO_MINUTOS = 5
+INTERVALO_MINUTOS = 60
 
 
 def tarea_prediccion_automatica():
