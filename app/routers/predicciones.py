@@ -41,6 +41,18 @@ class PrediccionResponse(BaseModel):
     rutas: List[RutaResponse] = []
 
 
+class PrediccionResumenResponse(BaseModel):
+    id: int
+    timestamp_evaluacion: datetime
+    accuracy_semaforo_pct: float
+    mae_volumen_bicicletas: float
+    movimientos_mitigados_unidades: int
+    eficiencia_rebalanceo_local_pct: float
+    distancia_total_optimizada_local_km: float
+    flota_resumen: dict
+    created_at: datetime
+
+
 @router.post("/ejecutar", response_model=PrediccionResponse)
 def ejecutar(
     request: Request,
@@ -79,16 +91,19 @@ def latest(
     return _build_response(prediccion, session)
 
 
-@router.get("", response_model=List[PrediccionResponse])
+@router.get("", response_model=List[PrediccionResumenResponse])
 def listar(
     session: Session = Depends(get_session),
     current_user=Depends(get_current_user),
 ):
     predicciones = session.exec(
-        select(Prediccion).order_by(Prediccion.created_at.desc())
+        select(Prediccion).order_by(Prediccion.created_at.desc()).limit(20)
     ).all()
 
-    return [_build_response(p, session) for p in predicciones]
+    return [
+        {**p.model_dump(), "flota_resumen": json.loads(p.flota_resumen)}
+        for p in predicciones
+    ]
 
 
 def _build_response(prediccion: Prediccion, session: Session) -> dict:
