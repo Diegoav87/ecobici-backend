@@ -1,27 +1,25 @@
 import json
+import os
+import requests
 from datetime import datetime
 from sqlmodel import Session
-
-from app.ml.prediccion_realtime import cargar_modelos, ejecutar_prediccion
+from dotenv import load_dotenv
 
 from app.models.prediccion import Prediccion
 from app.models.ruta import Ruta
 
-# Los modelos se cargan una sola vez al importar este módulo
-_modelos = None
+load_dotenv()
 
-
-def get_modelos():
-    global _modelos
-    if _modelos is None:
-        _modelos = cargar_modelos()
-    return _modelos
+ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
 
 
 def correr_prediccion_y_guardar(session: Session) -> Prediccion:
-    model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base = get_modelos()
-
-    payload = ejecutar_prediccion(model_regresor, model_clasificador, mapa_tri_interaccion, mapa_historico, encoding_map, coords_base)
+    try:
+        response = requests.post(f"{ML_SERVICE_URL}/predecir", timeout=60)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as e:
+        raise RuntimeError(f"No se pudo contactar el servicio ML: {e}")
 
     metricas = payload["metricas_globales"]
     perf = metricas["model_performance"]
