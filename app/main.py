@@ -9,7 +9,9 @@ from app.services.modelo import correr_prediccion_y_guardar
 
 app = FastAPI(title="Ecobici API")
 
-FRONTEND_URLS = [u.strip() for u in os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")]
+FRONTEND_URLS = [
+    u.strip() for u in os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,7 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-INTERVALO_MINUTOS = 60
+INTERVALO_MINUTOS = 10
 
 
 def tarea_prediccion_automatica():
