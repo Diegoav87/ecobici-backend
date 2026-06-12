@@ -15,6 +15,7 @@ ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
 
 def correr_prediccion_y_guardar(session: Session) -> Prediccion:
     try:
+        # timeout=60 porque el modelo procesa datos en tiempo real y puede tardar varios segundos.
         response = requests.post(f"{ML_SERVICE_URL}/predecir", timeout=60)
         response.raise_for_status()
         payload = response.json()
@@ -29,6 +30,7 @@ def correr_prediccion_y_guardar(session: Session) -> Prediccion:
         movimientos_mitigados_unidades=logistics["movimientos_mitigados_unidades"],
         eficiencia_rebalanceo_local_pct=logistics["eficiencia_rebalanceo_local_pct"],
         distancia_total_optimizada_local_km=logistics["distancia_total_optimizada_local_km"],
+        # ensure_ascii=False preserva tildes y caracteres especiales en nombres de estaciones.
         flota_resumen=json.dumps(metricas["flota_resumen"], ensure_ascii=False),
     )
     session.add(prediccion)

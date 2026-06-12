@@ -27,6 +27,7 @@ def create_access_token(data: dict) -> str:
 
 
 def decode_access_token(token: str) -> dict | None:
+    # Devuelve None en lugar de lanzar para que la dependencia decida el código HTTP.
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:

@@ -23,7 +23,7 @@ def get_estaciones():
         if sid not in info_map:
             continue
         i        = info_map[sid]
-        capacity = max(int(i["capacity"]), 1)
+        capacity = max(int(i["capacity"]), 1)  # Evita división por cero en pct_full.
         bikes    = int(s["num_bikes_available"])
         result.append({
             "station_id":   sid,

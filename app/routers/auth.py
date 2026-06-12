@@ -54,6 +54,7 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session),
 ):
+    # OAuth2PasswordRequestForm expone el campo como `username`; aquí lo tratamos como email.
     usuario = session.exec(select(Usuario).where(Usuario.email == form_data.username)).first()
 
     if not usuario or not verify_password(form_data.password, usuario.password_hash):
@@ -62,6 +63,7 @@ def login(
     if not usuario.activo:
         raise HTTPException(status_code=403, detail="Usuario desactivado")
 
+    # El rol se incluye en el JWT para que `require_rol` no necesite consultar la BD en cada request.
     token = create_access_token({"sub": str(usuario.id), "rol": usuario.rol})
 
     log = AuditLog(

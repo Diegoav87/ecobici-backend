@@ -26,6 +26,7 @@ def get_current_user(
         raise credentials_exception
 
     usuario = session.get(Usuario, int(user_id))
+    # Usuarios inactivos reciben 401, no 403, para no revelar que la cuenta existe.
     if usuario is None or not usuario.activo:
         raise credentials_exception
 
@@ -33,6 +34,8 @@ def get_current_user(
 
 
 def require_rol(*roles: Rol):
+    # Factory que devuelve una dependencia de FastAPI; permite reutilizar la
+    # verificación de roles con distintas combinaciones sin repetir código.
     def checker(current_user: Usuario = Depends(get_current_user)) -> Usuario:
         if current_user.rol not in roles:
             raise HTTPException(
