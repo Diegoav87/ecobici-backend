@@ -9,11 +9,11 @@ from app.services.modelo import correr_prediccion_y_guardar
 
 app = FastAPI(title="Ecobici API")
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URLS = [u.strip() for u in os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=FRONTEND_URLS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
